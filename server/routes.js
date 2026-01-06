@@ -17,14 +17,15 @@ const sendEmail = async (email, randomString) => {
     // FIX 2: More reliable Transporter settings for Render
     const transporter = nodemailer.createTransport({
         host: 'smtp.gmail.com',
-        port: 465,
-        secure: true, // Port 465 ke liye true
+        port: 587,
+        secure: false, // Port 465 ke liye true
         auth: {
             user: process.env.EMAIL_USER,
             pass: process.env.EMAIL_PASS, // App Password only
         },
         tls: {
-            rejectUnauthorized: false // Connection timeout fix
+            rejectUnauthorized: false,
+            minVersion: 'TLSv1.2'// Connection timeout fix
         }
     });
 

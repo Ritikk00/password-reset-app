@@ -7,40 +7,53 @@ const Token = require('./models/Token');
 
 /**
  * EMAIL SENDER
- * Uses nodemailer to send real emails via Gmail (or other service defined in .env)
  */
 const sendEmail = async (email, randomString) => {
-    const resetLink = `http://localhost:5173/reset-password/${randomString}`;
+    // FIX 1: Localhost hata kar Environment Variable use karein
+    // Render Dashboard mein FRONTEND_URL = https://your-ui-link.onrender.com set karein
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+    const resetLink = `${frontendUrl}/reset-password/${randomString}`;
     
-    // Create Transporter
+    // FIX 2: More reliable Transporter settings for Render
     const transporter = nodemailer.createTransport({
-        service: process.env.EMAIL_SERVICE || 'gmail',
+        host: 'smtp.gmail.com',
+        port: 465,
+        secure: true, // Port 465 ke liye true
         auth: {
             user: process.env.EMAIL_USER,
-            pass: process.env.EMAIL_PASS,
+            pass: process.env.EMAIL_PASS, // App Password only
         },
+        tls: {
+            rejectUnauthorized: false // Connection timeout fix
+        }
     });
 
-    // Email Options
     const mailOptions = {
-        from: process.env.EMAIL_USER,
+        from: `"Support Team" <${process.env.EMAIL_USER}>`,
         to: email,
         subject: 'Password Reset Request',
         html: `
-            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-                <h2>Password Reset Request</h2>
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee;">
+                <h2 style="color: #333;">Password Reset Request</h2>
                 <p>You requested a password reset. Please click the link below to reset your password:</p>
-                <a href="${resetLink}" style="background-color: #0d6efd; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block; margin: 20px 0;">Reset Password</a>
+                <div style="text-align: center; margin: 30px 0;">
+                    <a href="${resetLink}" style="background-color: #0d6efd; color: white; padding: 12px 25px; text-decoration: none; border-radius: 5px; font-weight: bold; display: inline-block;">Reset Password</a>
+                </div>
                 <p>This link will expire in 1 hour.</p>
-                <p>If you didn't request this, please ignore this email.</p>
+                <p style="color: #666; font-size: 12px;">If you didn't request this, please ignore this email.</p>
             </div>
         `
     };
 
-    console.log(`[EMAIL SERVICE] Sending email to: ${email}`);
-    await transporter.sendMail(mailOptions);
-    console.log(`[EMAIL SERVICE] Email sent successfully.`);
-    return true;
+    console.log(`[EMAIL SERVICE] Attempting to send email to: ${email}`);
+    try {
+        await transporter.sendMail(mailOptions);
+        console.log(`[EMAIL SERVICE] Email sent successfully.`);
+        return true;
+    } catch (error) {
+        console.error(`[EMAIL SERVICE] Error details:`, error);
+        throw error; // Isse catch block mein error handle hoga
+    }
 };
 
 /**
@@ -50,53 +63,43 @@ router.post('/forgot-password', async (req, res) => {
     const { email } = req.body;
 
     try {
-        // Requirement: Check if the user exists in the DB.
-        const user = await User.findOne({ email });
+        const user = await User.findOne({ email: email.toLowerCase() }); // email lowercase check
 
-        // Requirement: If the user is not present send an error message.
         if (!user) {
             return res.status(404).json({ message: 'User does not exist in our database.' });
         }
 
-        // Requirement: If the user is found generate a random string
+        // Token management
         let token = await Token.findOne({ userId: user._id });
         if (token) await token.deleteOne();
 
         const randomString = crypto.randomBytes(32).toString('hex');
         
-        // Requirement: Store the random string in DB for later verification.
         await new Token({
             userId: user._id,
             token: randomString,
             createdAt: Date.now(),
         }).save();
 
-        // Requirement: send a link with that random string in the mail
+        // Email sending with await
         await sendEmail(user.email, randomString);
         res.json({ message: 'Password reset link has been sent to your email.' });
 
     } catch (error) {
-        console.error(error);
-        res.status(500).json({ message: 'An error occurred. Please check server logs.' });
+        console.error("Forgot Password Error:", error);
+        res.status(500).json({ message: error.message || 'An error occurred during email sending.' });
     }
 });
 
 /**
- * 2. VERIFY TOKEN (Helper Route)
+ * 2. VERIFY TOKEN
  */
 router.get('/reset-password/:randomString', async (req, res) => {
-    const { randomString } = req.params;
-
     try {
-        // Retrieve the random string from DB
-        const token = await Token.findOne({ token: randomString });
-
-        // Requirement: If the string does not match send an error message.
+        const token = await Token.findOne({ token: req.params.randomString });
         if (!token) {
             return res.status(400).json({ message: 'Invalid or expired password reset link.' });
         }
-
-        // Requirement: If the string matches show the password reset form.
         res.json({ message: 'Link is valid.' });
     } catch (error) {
         res.status(500).json({ message: 'Server error' });
@@ -110,23 +113,16 @@ router.post('/reset-password', async (req, res) => {
     const { token: randomString, newPassword } = req.body;
 
     try {
-        // Retrieve the random string from DB
         const token = await Token.findOne({ token: randomString });
-        
-        // Check if the random string matches
         if (!token) {
             return res.status(400).json({ message: 'Invalid or expired token.' });
         }
 
-        // Update User Password
         const user = await User.findById(token.userId);
         if (!user) return res.status(400).json({ message: 'User not found.' });
 
-        // Requirement: Store the new password
-        user.password = newPassword;
+        user.password = newPassword; // Note: In production use bcrypt to hash this!
         await user.save();
-        
-        // Requirement: clear the random string in the DB
         await token.deleteOne();
         
         res.json({ message: 'Your password has been successfully reset.' });
@@ -137,11 +133,11 @@ router.post('/reset-password', async (req, res) => {
     }
 });
 
-// Helper route to create a test user easily (since we don't have a registration page)
+// Test user registration
 router.post('/register-test', async (req, res) => {
     const { email, password } = req.body;
     try {
-        const user = new User({ email, password });
+        const user = new User({ email: email.toLowerCase(), password });
         await user.save();
         res.json({ message: 'User created successfully', user });
     } catch (error) {

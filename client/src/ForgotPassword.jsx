@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import axios from 'axios';
+// import axios from 'axios';  <-- Ise hata diya
+import API from './api'; // <-- Aapka naya axios instance
 
 /**
  * Forgot Password Component
@@ -18,11 +19,11 @@ const ForgotPassword = () => {
         setMessage('');
 
         try {
-            // Step: Check if the user exists in the DB (Backend handles this check)
-            const res = await axios.post('http://localhost:5000/api/forgot-password', { email });
+            // Ab 'http://localhost:5000/api' likhne ki zarurat nahi
+            // API instance automatically base URL add kar dega
+            const res = await API.post('/forgot-password', { email });
             setMessage(res.data.message);
         } catch (err) {
-            // Requirement: If the user is not present send an error message.
             setError(err.response?.data?.message || 'Something went wrong. Please try again.');
         } finally {
             setIsLoading(false);
@@ -33,7 +34,7 @@ const ForgotPassword = () => {
         <div className="container mt-5">
             <div className="row justify-content-center">
                 <div className="col-md-5">
-                    <div className="card p-4">
+                    <div className="card p-4 shadow-sm"> {/* Added shadow for better look */}
                         <div className="card-body">
                             <div className="text-center mb-4">
                                 <i className="bi bi-shield-lock text-primary" style={{ fontSize: '3rem' }}></i>

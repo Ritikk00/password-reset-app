@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import API from './api';
 import { useParams, useNavigate } from 'react-router-dom';
 
 /**
@@ -23,7 +23,7 @@ const ResetPassword = () => {
     useEffect(() => {
         const verifyToken = async () => {
             try {
-                await axios.get(`http://localhost:5000/api/reset-password/${token}`);
+                await API.get(`/reset-password/${token}`);
                 // Requirement: If the string matches show the password reset form.
                 setIsValidToken(true);
             } catch (err) {
@@ -52,7 +52,7 @@ const ResetPassword = () => {
 
         try {
             // Requirement: Store the new password and clear the random string in the DB
-            const res = await axios.post('http://localhost:5000/api/reset-password', {
+            const res = await API.post('/reset-password', {
                 token,
                 newPassword
             });
